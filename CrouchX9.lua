@@ -81,6 +81,9 @@ local copyButton = makeButton("CopyReport", "COPIAR RELATÓRIO", UDim2.new(0, 12
 local scanButton = makeButton("Rescan", "REESCANEAR BOTÕES", UDim2.new(0, 12, 0, 116), UDim2.new(0.58, -8, 0, 26), Color3.fromRGB(65, 72, 86))
 local closeButton = makeButton("Close", "FECHAR", UDim2.new(0.62, 0, 0, 116), UDim2.new(0.34, -8, 0, 26), Color3.fromRGB(130, 58, 58))
 
+local seenButtons = setmetatable({}, {__mode = "k"})
+local lastVisible = setmetatable({}, {__mode = "k"})
+
 local function getReport()
     local header = {
         "Evade Legacy Crouch X9 report",
@@ -134,8 +137,6 @@ local function copyReport()
     end
 end
 
-local seenButtons = setmetatable({}, {__mode = "k"})
-local lastVisible = setmetatable({}, {__mode = "k"})
 local function describeButton(button, eventName, input)
     local extra = ""
     if input then
