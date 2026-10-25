@@ -1,97 +1,62 @@
 -- Evade Legacy X9 - Infinite crouch
--- No custom GUI. Uses the game's existing crouch button and crouch animation.
--- Animation lock only; the game may control the actual crouch movement state.
+-- Uses the game's own KeybindUsed event; no custom GUI or animation replacement.
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
 local player = Players.LocalPlayer
 if not player then return end
+
 local playerGui = player:WaitForChild("PlayerGui")
-local CROUCH_ID = "9224101460"
+local playerScripts = player:WaitForChild("PlayerScripts")
+local events = playerScripts:WaitForChild("Events", 10)
+local keybindUsed = events and events:WaitForChild("KeybindUsed", 10)
+if not keybindUsed or not keybindUsed:IsA("BindableEvent") then
+    warn("[X9] KeybindUsed event not found")
+    return
+end
+
 local enabled = false
-local track, animatorRef
-local animation = Instance.new("Animation")
-animation.Name = "X9InfiniteCrouch"
-animation.AnimationId = "rbxassetid://" .. CROUCH_ID
+local hooked = setmetatable({}, {__mode = "k"})
 
-local function animator()
-    local char = player.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    return hum and hum:FindFirstChildOfClass("Animator")
-end
+local function connectButton(obj)
+    if not obj:IsA("GuiButton") or obj.Name ~= "Crouch" or hooked[obj] then return end
+    hooked[obj] = true
 
-local function idOf(t)
-    local id = ""
-    pcall(function() id = t.Animation.AnimationId end)
-    return tostring(id):match("%d+")
-end
-
-local function findTrack()
-    local a = animator()
-    if not a then return nil end
-    local ok, list = pcall(function() return a:GetPlayingAnimationTracks() end)
-    if not ok then return nil end
-    for _, t in ipairs(list) do
-        if idOf(t) == CROUCH_ID then return t end
-    end
-end
-
-local function stopTracks()
-    local a = animator()
-    if a then
-        local ok, list = pcall(function() return a:GetPlayingAnimationTracks() end)
-        if ok then
-            for _, t in ipairs(list) do
-                if idOf(t) == CROUCH_ID then pcall(function() t:Stop(0.1) end) end
-            end
-        end
-    end
-    if track then pcall(function() track:Stop(0.1) end) end
-    track, animatorRef = nil, nil
-end
-
-local function play()
-    local a = animator()
-    if not a then return end
-    if track and animatorRef == a then
-        if not track.IsPlaying then pcall(function() track:Play(0.08, 1, 1) end) end
-        return
-    end
-    if track then pcall(function() track:Stop(0) end) end
-    local ok, t = pcall(function() return a:LoadAnimation(animation) end)
-    if not ok or not t then return end
-    track, animatorRef = t, a
-    t.Looped = true
-    pcall(function() t.Priority = Enum.AnimationPriority.Action end)
-    pcall(function() t:Play(0.08, 1, 1) end)
-end
-
-local function connect(obj)
-    if not obj:IsA("GuiButton") or obj.Name ~= "Crouch" or obj:GetAttribute("X9CrouchHooked") then return end
-    obj:SetAttribute("X9CrouchHooked", true)
+    -- The game's own button still handles the normal crouch toggle.
+    -- This only tracks whether the user wants crouch held continuously.
     obj.Activated:Connect(function()
         enabled = not enabled
-        if enabled then
-            play()
+        if not enabled then
+            pcall(function() keybindUsed:Fire("Crouch", false) end)
         else
-            stopTracks()
+            pcall(function() keybindUsed:Fire("Crouch", true) end)
         end
     end)
 end
 
-for _, obj in ipairs(playerGui:GetDescendants()) do connect(obj) end
+for _, obj in ipairs(playerGui:GetDescendants()) do
+    connectButton(obj)
+end
+
 playerGui.DescendantAdded:Connect(function(obj)
-    task.defer(function() if obj.Parent then connect(obj) end end)
+    task.defer(function()
+        if obj.Parent then connectButton(obj) end
+    end)
+end)
+
+-- Re-send the original game's crouch input while enabled, including after respawn
+-- and when an emote interrupts the held input.
+RunService.Heartbeat:Connect(function()
+    if enabled then
+        pcall(function() keybindUsed:Fire("Crouch", true) end)
+    end
 end)
 
 player.CharacterAdded:Connect(function()
-    if track then pcall(function() track:Stop(0) end) end
-    track, animatorRef = nil, nil
-    task.delay(0.7, function() if enabled then play() end end)
-end)
-
-task.spawn(function()
-    while player.Parent do
-        if enabled and not findTrack() then play() end
-        task.wait(0.12)
-    end
+    task.delay(0.5, function()
+        if enabled then
+            pcall(function() keybindUsed:Fire("Crouch", true) end)
+        end
+    end)
 end)
