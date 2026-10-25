@@ -141,10 +141,115 @@ local function copyReport()
     end
 end
 
+-- Crouch persistence: restore the crouch animation after an emote ends.
+-- This preserves the animation; the game may still override actual movement state.
+local CROUCH_ANIMATION_ID = "9224101460"
+local EMOTE_ANIMATION_IDS = {
+    ["8734712302"] = true,
+    ["8734713502"] = true,
+    ["8734714115"] = true,
+    ["8734717021"] = true,
+}
+local crouchEnabled = nil
+local crouchAnimation, forcedCrouchTrack
+local crouchButtonConnected = {}
+
+local function getAnimator()
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return nil end
+    local animator = hum:FindFirstChildOfClass("Animator")
+    if not animator then
+        pcall(function() animator = hum:WaitForChild("Animator", 1) end)
+    end
+    return animator
+end
+
+local function animationNumber(track)
+    local id = ""
+    pcall(function()
+        if track.Animation then id = track.Animation.AnimationId end
+    end)
+    return tostring(id):match("%d+")
+end
+
+local function getCrouchTrack()
+    local animator = getAnimator()
+    if not animator then return nil end
+    local ok, tracks = pcall(function() return animator:GetPlayingAnimationTracks() end)
+    if ok then
+        for _, track in ipairs(tracks) do
+            if animationNumber(track) == CROUCH_ANIMATION_ID then return track end
+        end
+    end
+    return nil
+end
+
+local function emoteIsPlaying()
+    local animator = getAnimator()
+    if not animator then return false end
+    local ok, tracks = pcall(function() return animator:GetPlayingAnimationTracks() end)
+    if not ok then return false end
+    for _, track in ipairs(tracks) do
+        if EMOTE_ANIMATION_IDS[animationNumber(track)] then return true end
+    end
+    return false
+end
+
+local function prepareCrouchTrack()
+    local animator = getAnimator()
+    if not animator then return nil end
+    if forcedCrouchTrack and forcedCrouchTrack.Parent == animator then
+        return forcedCrouchTrack
+    end
+    pcall(function() if forcedCrouchTrack then forcedCrouchTrack:Stop(0) end end)
+    if not crouchAnimation then
+        crouchAnimation = Instance.new("Animation")
+        crouchAnimation.Name = "X9CrouchAnimation"
+        crouchAnimation.AnimationId = "rbxassetid://" .. CROUCH_ANIMATION_ID
+    end
+    local ok, track = pcall(function() return animator:LoadAnimation(crouchAnimation) end)
+    if not ok then
+        log("CROUCH_LOAD_FAILED " .. tostring(track))
+        return nil
+    end
+    forcedCrouchTrack = track
+    forcedCrouchTrack.Looped = true
+    pcall(function() forcedCrouchTrack.Priority = Enum.AnimationPriority.Action end)
+    return forcedCrouchTrack
+end
+
+local function stopCrouchTracks()
+    local animator = getAnimator()
+    if animator then
+        local ok, tracks = pcall(function() return animator:GetPlayingAnimationTracks() end)
+        if ok then
+            for _, track in ipairs(tracks) do
+                if animationNumber(track) == CROUCH_ANIMATION_ID then
+                    pcall(function() track:Stop(0.12) end)
+                end
+            end
+        end
+    end
+    if forcedCrouchTrack then pcall(function() forcedCrouchTrack:Stop(0.12) end) end
+end
+
+local function connectCrouchButton(obj)
+    if crouchButtonConnected[obj] then return end
+    crouchButtonConnected[obj] = true
+    obj.Activated:Connect(function()
+        if crouchEnabled == nil then crouchEnabled = getCrouchTrack() ~= nil end
+        crouchEnabled = not crouchEnabled
+        log("CROUCH_LOCK=" .. tostring(crouchEnabled))
+        if not crouchEnabled then stopCrouchTracks() end
+    end)
+end
+
 local function watch(obj)
     if not obj:IsA("GuiButton") or watched[obj] then return end
     watched[obj] = true
     log("BUTTON_FOUND " .. obj.Name .. " | " .. obj:GetFullName())
+    if obj.Name == "Crouch" then connectCrouchButton(obj) end
     obj.Activated:Connect(function()
         log("BUTTON_ACTIVATED " .. obj.Name)
     end)
@@ -241,6 +346,26 @@ task.spawn(function()
             log("ANIMATIONS " .. joined)
         end
         task.wait(0.3)
+    end
+end)
+
+task.spawn(function()
+    local deadline = os.clock() + 3
+    repeat
+        if getAnimator() then break end
+        task.wait(0.1)
+    until os.clock() >= deadline
+    if crouchEnabled == nil then crouchEnabled = getCrouchTrack() ~= nil end
+    log("CROUCH_INITIAL=" .. tostring(crouchEnabled))
+    while running and gui.Parent do
+        if crouchEnabled and not emoteIsPlaying() and not getCrouchTrack() then
+            local track = prepareCrouchTrack()
+            if track then
+                pcall(function() track:Play(0.12, 1, 1) end)
+                log("CROUCH_ANIMATION_RESTORED")
+            end
+        end
+        task.wait(0.12)
     end
 end)
 
