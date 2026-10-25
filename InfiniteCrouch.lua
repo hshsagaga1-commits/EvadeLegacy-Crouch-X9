@@ -1,6 +1,6 @@
--- Evade Legacy X9 - Macro for the actual mobile GUI buttons
--- First tap: Emote tab -> Emote 5 -> Flashlight -> Crouch.
--- Second tap: Emote tab only. The macro does not tap Crouch again.
+-- Evade Legacy X9 - Keyboard macro
+-- First tap: G (open/use emote) -> 5 (select emote 5) -> F (light) -> C (crouch).
+-- Second tap: G only. It does not send C again.
 
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
@@ -24,7 +24,7 @@ macroButton.Size = UDim2.new(0, 260, 0, 48)
 macroButton.Position = UDim2.new(0.5, -130, 0.08, 0)
 macroButton.BackgroundColor3 = Color3.fromRGB(35, 115, 190)
 macroButton.TextColor3 = Color3.new(1, 1, 1)
-macroButton.Text = "Macro: executar sequência"
+macroButton.Text = "Macro: G > 5 > F > C"
 macroButton.TextSize = 15
 macroButton.Font = Enum.Font.GothamBold
 macroButton.Parent = gui
@@ -44,74 +44,52 @@ status.TextSize = 13
 status.Font = Enum.Font.Gotham
 status.Parent = gui
 
-local function norm(s)
-    return string.lower(tostring(s or "")):gsub("[%s_%-]", "")
-end
+local virtualInput
+pcall(function()
+    virtualInput = game:GetService("VirtualInputManager")
+end)
 
-local function buttonText(obj)
-    local result = {obj.Name}
-    pcall(function() table.insert(result, obj.Text) end)
-    pcall(function() table.insert(result, obj:GetAttribute("Text")) end)
-    pcall(function() table.insert(result, obj:GetAttribute("Name")) end)
-    return norm(table.concat(result, " "))
-end
+local virtualKeys = {
+    G = 0x47,
+    Five = 0x35,
+    F = 0x46,
+    C = 0x43
+}
 
-local function allButtons()
-    local result = {}
-    for _, obj in ipairs(playerGui:GetDescendants()) do
-        if obj:IsA("GuiButton") and obj.Visible and obj.Active then
-            table.insert(result, obj)
-        end
-    end
-    return result
-end
-
-local function findButton(kind)
-    local buttons = allButtons()
-    local best, bestScore = nil, 0
-    for _, obj in ipairs(buttons) do
-        local s = buttonText(obj)
-        local score = 0
-        if kind == "emoteTab" then
-            if s == "emote" or s == "emotes" or s:find("emotemenu", 1, true) or s:find("emotetab", 1, true) then score = 100 end
-            if s:find("emote5", 1, true) or s:find("slot5", 1, true) then score = 0 end
-        elseif kind == "emote5" then
-            if s:find("emote5", 1, true) or s:find("emote05", 1, true) or s:find("slot5", 1, true) then score = 100 end
-            if s:find("emote", 1, true) and (s:find("5", 1, true) or s:find("five", 1, true)) then score = math.max(score, 90) end
-        elseif kind == "flashlight" then
-            if s:find("flashlight", 1, true) or s:find("lanterna", 1, true) then score = 100 end
-        elseif kind == "crouch" then
-            if s == "crouch" or s:find("crouchbutton", 1, true) or s == "agachar" then score = 100 end
-        end
-        if score > bestScore then
-            best, bestScore = obj, score
-        end
-    end
-    return best
-end
-
-local function activateButton(obj)
-    if not obj then return false end
-    local ok = pcall(function() obj:Activate() end)
-    if ok then return true end
-    -- Some executor/game combinations expose Activated as a signal only.
-    local fired = pcall(function() firesignal(obj.Activated) end)
-    return fired
-end
-
-local function tap(kind)
-    local obj = findButton(kind)
-    if not obj then
-        status.Text = "Não achei o botão: " .. kind
+local function tapKey(keyName)
+    local keyCode = Enum.KeyCode[keyName]
+    if not keyCode then
+        status.Text = "Tecla inválida: " .. keyName
         return false
     end
-    local ok = activateButton(obj)
-    if not ok then
-        status.Text = "Achei " .. kind .. ", mas não consegui ativar"
-        return false
+
+    -- Try executor keyboard functions first when available.
+    if type(keypress) == "function" and type(keyrelease) == "function" then
+        local ok = pcall(function()
+            keypress(virtualKeys[keyName])
+            task.wait(0.07)
+            keyrelease(virtualKeys[keyName])
+        end)
+        if ok then
+            status.Text = "Tecla enviada: " .. keyName
+            return true
+        end
     end
-    status.Text = "OK: " .. kind
-    return true
+
+    if virtualInput then
+        local ok = pcall(function()
+            virtualInput:SendKeyEvent(true, keyCode, false, game)
+            task.wait(0.07)
+            virtualInput:SendKeyEvent(false, keyCode, false, game)
+        end)
+        if ok then
+            status.Text = "Tecla enviada: " .. keyName
+            return true
+        end
+    end
+
+    status.Text = "Não consegui enviar a tecla " .. keyName
+    return false
 end
 
 local busy = false
@@ -120,32 +98,34 @@ local phase = 0
 macroButton.Activated:Connect(function()
     if busy then return end
     busy = true
+
     if phase == 0 then
-        status.Text = "1/4: abrindo Emotes..."
-        if tap("emoteTab") then
-            task.wait(0.25)
-            status.Text = "2/4: selecionando Emote 5..."
-            if tap("emote5") then
-                task.wait(0.2)
-                status.Text = "3/4: ativando lanterna..."
-                if tap("flashlight") then
+        status.Text = "1/4: G — Emote..."
+        if tapKey("G") then
+            task.wait(0.35)
+            status.Text = "2/4: 5 — Emote 5..."
+            if tapKey("Five") then
+                task.wait(0.25)
+                status.Text = "3/4: F — Lanterna..."
+                if tapKey("F") then
                     task.wait(0.2)
-                    status.Text = "4/4: ativando agachar..."
-                    if tap("crouch") then
+                    status.Text = "4/4: C — Agachar..."
+                    if tapKey("C") then
                         phase = 1
-                        macroButton.Text = "Macro: abrir Emotes"
-                        status.Text = "Sequência feita. Próximo toque abre Emotes."
+                        macroButton.Text = "Macro: G apenas"
+                        status.Text = "Sequência concluída. Próximo toque envia só G."
                     end
                 end
             end
         end
     else
-        status.Text = "Abrindo Emotes..."
-        if tap("emoteTab") then
+        status.Text = "Enviando G..."
+        if tapKey("G") then
             phase = 0
-            macroButton.Text = "Macro: executar sequência"
-            status.Text = "Emotes aberto. Crouch não foi tocado."
+            macroButton.Text = "Macro: G > 5 > F > C"
+            status.Text = "Só G enviado; C não foi enviado de novo."
         end
     end
+
     busy = false
 end)
