@@ -8,6 +8,9 @@ local player = Players.LocalPlayer
 if not player then return end
 
 local playerGui = player:WaitForChild("PlayerGui")
+local playerScripts = player:WaitForChild("PlayerScripts")
+local events = playerScripts:WaitForChild("Events", 10)
+local keybindUsed = events and events:WaitForChild("KeybindUsed", 10)
 local CROUCH_ANIMATION_ID = "9224101460"
 
 -- Remove an old status indicator if the script is re-executed.
@@ -145,8 +148,14 @@ local function connectCrouchButton(obj)
         end
         crouchEnabled = not crouchEnabled
         if crouchEnabled then
+            pcall(function()
+                if keybindUsed then keybindUsed:Fire("Crouch", true) end
+            end)
             playCrouch()
         else
+            pcall(function()
+                if keybindUsed then keybindUsed:Fire("Crouch", false) end
+            end)
             stopCrouchTracks()
         end
     end)
@@ -174,7 +183,13 @@ end)
 
 -- No task.wait(0.06): check each frame while enabled.
 RunService.Heartbeat:Connect(function()
-    if crouchEnabled and not getCrouchTrack() then
-        playCrouch()
+    if crouchEnabled then
+        -- Restore both the game keybind state and the visual crouch animation.
+        pcall(function()
+            if keybindUsed then keybindUsed:Fire("Crouch", true) end
+        end)
+        if not getCrouchTrack() then
+            playCrouch()
+        end
     end
 end)
