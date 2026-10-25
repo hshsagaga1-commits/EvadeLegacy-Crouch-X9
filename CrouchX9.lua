@@ -358,14 +358,15 @@ task.spawn(function()
     if crouchEnabled == nil then crouchEnabled = getCrouchTrack() ~= nil end
     log("CROUCH_INITIAL=" .. tostring(crouchEnabled))
     while running and gui.Parent do
-        if crouchEnabled and not emoteIsPlaying() and not getCrouchTrack() then
+        -- Keep crouch active during emotes too; do not wait for the emote to end.
+        if crouchEnabled and not getCrouchTrack() then
             local track = prepareCrouchTrack()
             if track then
-                pcall(function() track:Play(0.12, 1, 1) end)
+                pcall(function() track:Play(0.08, 1, 1) end)
                 log("CROUCH_ANIMATION_RESTORED")
             end
         end
-        task.wait(0.12)
+        task.wait(0.06)
     end
 end)
 
