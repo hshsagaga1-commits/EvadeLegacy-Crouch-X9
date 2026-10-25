@@ -17,6 +17,32 @@ if not keybindUsed or not keybindUsed:IsA("BindableEvent") then
     return
 end
 
+-- Visible confirmation that the script loaded through the keybind check.
+local statusGui = Instance.new("ScreenGui")
+statusGui.Name = "X9CrouchStatus"
+statusGui.ResetOnSpawn = false
+statusGui.DisplayOrder = 999
+statusGui.Parent = playerGui
+
+local statusButton = Instance.new("TextButton")
+statusButton.Name = "StatusButton"
+statusButton.Size = UDim2.new(0, 250, 0, 44)
+statusButton.Position = UDim2.new(0.5, -125, 0.08, 0)
+statusButton.BackgroundColor3 = Color3.fromRGB(35, 145, 75)
+statusButton.TextColor3 = Color3.new(1, 1, 1)
+statusButton.Text = "Script deu certo, tente usar"
+statusButton.TextSize = 16
+statusButton.Font = Enum.Font.GothamBold
+statusButton.Parent = statusGui
+
+local statusCorner = Instance.new("UICorner")
+statusCorner.CornerRadius = UDim.new(0, 9)
+statusCorner.Parent = statusButton
+
+statusButton.Activated:Connect(function()
+    statusGui:Destroy()
+end)
+
 local enabled = false
 local hooked = setmetatable({}, { __mode = "k" })
 
