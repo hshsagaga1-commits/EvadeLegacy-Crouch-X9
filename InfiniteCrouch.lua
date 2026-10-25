@@ -1,8 +1,9 @@
 -- Evade Legacy X9 - Infinite crouch
--- Keeps the game's original Crouch keybind in its pressed state.
--- No custom GUI and no replacement animation.
+-- Keeps the game's original Crouch keybind pressed while enabled.
+-- The original in-game Crouch button is the only toggle; no custom GUI/animation.
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 if not player then return end
 
@@ -31,7 +32,7 @@ local function hookButton(obj)
     end
     hooked[obj] = true
 
-    -- The original game button remains the only toggle.
+    -- Toggle using the game's original Crouch button.
     obj.Activated:Connect(function()
         enabled = not enabled
         setCrouchHeld(enabled)
@@ -50,20 +51,19 @@ playerGui.DescendantAdded:Connect(function(obj)
     end)
 end)
 
--- Re-assert once after respawn, not every frame (which can spam the keybind).
+-- Re-assert the held state every frame so emotes/canceling emotes
+-- cannot leave the game's Crouch keybind released while the toggle is on.
+RunService.Heartbeat:Connect(function()
+    if enabled then
+        setCrouchHeld(true)
+    end
+end)
+
+-- The heartbeat continues across respawns; reapply once when the new character appears.
 player.CharacterAdded:Connect(function()
-    task.delay(0.6, function()
+    task.defer(function()
         if enabled then
             setCrouchHeld(true)
         end
     end)
-end)
-
--- If the game recreates its GUI after respawn, preserve the held state.
-playerGui.DescendantAdded:Connect(function(obj)
-    if enabled and obj.Name == "Crouch" and obj:IsA("GuiButton") then
-        task.defer(function()
-            if enabled then setCrouchHeld(true) end
-        end)
-    end
 end)
