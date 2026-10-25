@@ -1,20 +1,37 @@
--- Evade Legacy X9 - Infinite Crouch (mobile)
--- No diagnostic panel. Uses the game's existing Crouch button as the toggle.
--- This forces the crouch animation; actual movement state may still be controlled by the game.
+-- Evade Legacy X9 - Crouch GUI + Infinite Crouch
+-- Based on the public Legacy Evade GUI's local KeybindUsed event.
+-- The lock keeps the crouch animation playing; the game's internal movement state may override it.
 
 local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 if not player then return end
 
-local pg = player:WaitForChild("PlayerGui")
+local playerGui = player:WaitForChild("PlayerGui")
 local CROUCH_ANIMATION_ID = "9224101460"
-
-local crouchEnabled = nil
+local crouchEnabled = false
 local crouchAnimation
 local forcedTrack
 local forcedAnimator
 local connectedButtons = {}
-local running = true
+local lastCharacter = nil
+
+-- Remove this script's previous GUI if the loader is run more than once.
+local oldGui = playerGui:FindFirstChild("X9InfiniteCrouchGui")
+if oldGui then oldGui:Destroy() end
+
+local function fireGameCrouch()
+    local scripts = player:FindFirstChild("PlayerScripts")
+    local events = scripts and scripts:FindFirstChild("Events")
+    local keybindUsed = events and events:FindFirstChild("KeybindUsed")
+    if keybindUsed and keybindUsed:IsA("BindableEvent") then
+        -- This is the local keybind event used by the public Legacy Evade GUI.
+        pcall(function() keybindUsed:Fire("Crouch", true) end)
+        return true
+    end
+    return false
+end
 
 local function getAnimator()
     local character = player.Character
@@ -34,14 +51,10 @@ end
 local function getCrouchTrack()
     local animator = getAnimator()
     if not animator then return nil end
-    local ok, tracks = pcall(function()
-        return animator:GetPlayingAnimationTracks()
-    end)
+    local ok, tracks = pcall(function() return animator:GetPlayingAnimationTracks() end)
     if not ok then return nil end
     for _, track in ipairs(tracks) do
-        if animationNumber(track) == CROUCH_ANIMATION_ID then
-            return track
-        end
+        if animationNumber(track) == CROUCH_ANIMATION_ID then return track end
     end
     return nil
 end
@@ -49,9 +62,7 @@ end
 local function stopCrouchTracks()
     local animator = getAnimator()
     if animator then
-        local ok, tracks = pcall(function()
-            return animator:GetPlayingAnimationTracks()
-        end)
+        local ok, tracks = pcall(function() return animator:GetPlayingAnimationTracks() end)
         if ok then
             for _, track in ipairs(tracks) do
                 if animationNumber(track) == CROUCH_ANIMATION_ID then
@@ -60,108 +71,124 @@ local function stopCrouchTracks()
             end
         end
     end
-    if forcedTrack then
-        pcall(function() forcedTrack:Stop(0.1) end)
-    end
+    if forcedTrack then pcall(function() forcedTrack:Stop(0.1) end) end
 end
 
 local function playCrouch()
     local animator = getAnimator()
     if not animator then return end
-
     if forcedTrack and forcedAnimator == animator then
         if not forcedTrack.IsPlaying then
             pcall(function() forcedTrack:Play(0.08, 1, 1) end)
         end
         return
     end
-
-    pcall(function()
-        if forcedTrack then forcedTrack:Stop(0) end
-    end)
-
+    pcall(function() if forcedTrack then forcedTrack:Stop(0) end end)
     if not crouchAnimation then
         crouchAnimation = Instance.new("Animation")
         crouchAnimation.Name = "X9InfiniteCrouch"
         crouchAnimation.AnimationId = "rbxassetid://" .. CROUCH_ANIMATION_ID
     end
-
-    local ok, track = pcall(function()
-        return animator:LoadAnimation(crouchAnimation)
-    end)
+    local ok, track = pcall(function() return animator:LoadAnimation(crouchAnimation) end)
     if not ok or not track then return end
-
     forcedTrack = track
     forcedAnimator = animator
     forcedTrack.Looped = true
-    pcall(function()
-        forcedTrack.Priority = Enum.AnimationPriority.Action
-    end)
-    pcall(function()
-        forcedTrack:Play(0.08, 1, 1)
-    end)
+    pcall(function() forcedTrack.Priority = Enum.AnimationPriority.Action end)
+    pcall(function() forcedTrack:Play(0.08, 1, 1) end)
 end
 
-local function connectCrouchButton(obj)
-    if connectedButtons[obj] then return end
-    connectedButtons[obj] = true
+local gui = Instance.new("ScreenGui")
+gui.Name = "X9InfiniteCrouchGui"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 100
+gui.Parent = playerGui
 
-    obj.Activated:Connect(function()
-        if crouchEnabled == nil then
-            crouchEnabled = getCrouchTrack() ~= nil
-        end
-        crouchEnabled = not crouchEnabled
-        if not crouchEnabled then
-            stopCrouchTracks()
-        else
+local button = Instance.new("TextButton")
+button.Name = "CrouchToggle"
+button.Size = UDim2.new(0, 112, 0, 44)
+button.Position = UDim2.new(1, -132, 0.62, 0)
+button.BackgroundColor3 = Color3.fromRGB(35, 105, 65)
+button.TextColor3 = Color3.new(1, 1, 1)
+button.Text = "CROUCH: OFF"
+button.TextSize = 13
+button.Font = Enum.Font.GothamBold
+button.BorderSizePixel = 0
+button.Active = true
+button.Parent = gui
+Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
+
+local function refreshButton()
+    if crouchEnabled then
+        button.Text = "CROUCH: ON"
+        button.BackgroundColor3 = Color3.fromRGB(25, 145, 75)
+    else
+        button.Text = "CROUCH: OFF"
+        button.BackgroundColor3 = Color3.fromRGB(35, 105, 65)
+    end
+end
+
+button.Activated:Connect(function()
+    crouchEnabled = not crouchEnabled
+    if crouchEnabled then
+        fireGameCrouch()
+        playCrouch()
+    else
+        fireGameCrouch()
+        stopCrouchTracks()
+    end
+    refreshButton()
+end)
+
+-- Make the button draggable on touch or mouse.
+local dragging, dragInput, dragStart, startPos
+button.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = button.Position
+        dragInput = input
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+button.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+        dragInput = input
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if dragging and (input == dragInput or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        button.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+player.CharacterAdded:Connect(function(character)
+    if forcedTrack then pcall(function() forcedTrack:Stop(0) end) end
+    forcedTrack = nil
+    forcedAnimator = nil
+    lastCharacter = character
+    task.delay(0.8, function()
+        if crouchEnabled and player.Character == character then
+            fireGameCrouch()
             playCrouch()
         end
     end)
-end
-
-local function inspect(obj)
-    if obj:IsA("GuiButton") and obj.Name == "Crouch" then
-        connectCrouchButton(obj)
-    end
-end
-
-for _, obj in ipairs(pg:GetDescendants()) do
-    inspect(obj)
-end
-
-pg.DescendantAdded:Connect(function(obj)
-    task.defer(function()
-        if obj.Parent then inspect(obj) end
-    end)
-end)
-
-player.CharacterAdded:Connect(function()
-    if forcedTrack then
-        pcall(function() forcedTrack:Stop(0) end)
-    end
-    forcedTrack = nil
-    forcedAnimator = nil
-    -- Keep crouchEnabled across respawns; the loop will restore it on the new character.
 end)
 
 task.spawn(function()
-    local deadline = os.clock() + 3
-    repeat
-        if getAnimator() then break end
-        task.wait(0.1)
-    until os.clock() >= deadline
-
-    if crouchEnabled == nil then
-        crouchEnabled = getCrouchTrack() ~= nil
-    end
-
-    while running do
-        if crouchEnabled then
-            -- Restore it even if an emote or another animation replaces the crouch track.
-            if not getCrouchTrack() then
-                playCrouch()
-            end
+    while gui.Parent do
+        if crouchEnabled and not getCrouchTrack() then
+            playCrouch()
         end
         task.wait(0.06)
     end
 end)
+
+refreshButton()
