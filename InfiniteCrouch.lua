@@ -1,194 +1,97 @@
--- Evade Legacy X9 - Crouch GUI + Infinite Crouch
--- Based on the public Legacy Evade GUI's local KeybindUsed event.
--- The lock keeps the crouch animation playing; the game's internal movement state may override it.
+-- Evade Legacy X9 - Infinite crouch
+-- No custom GUI. Uses the game's existing crouch button and crouch animation.
+-- Animation lock only; the game may control the actual crouch movement state.
 
 local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 if not player then return end
-
 local playerGui = player:WaitForChild("PlayerGui")
-local CROUCH_ANIMATION_ID = "9224101460"
-local crouchEnabled = false
-local crouchAnimation
-local forcedTrack
-local forcedAnimator
-local connectedButtons = {}
-local lastCharacter = nil
+local CROUCH_ID = "9224101460"
+local enabled = false
+local track, animatorRef
+local animation = Instance.new("Animation")
+animation.Name = "X9InfiniteCrouch"
+animation.AnimationId = "rbxassetid://" .. CROUCH_ID
 
--- Remove this script's previous GUI if the loader is run more than once.
-local oldGui = playerGui:FindFirstChild("X9InfiniteCrouchGui")
-if oldGui then oldGui:Destroy() end
-
-local function fireGameCrouch()
-    local scripts = player:FindFirstChild("PlayerScripts")
-    local events = scripts and scripts:FindFirstChild("Events")
-    local keybindUsed = events and events:FindFirstChild("KeybindUsed")
-    if keybindUsed and keybindUsed:IsA("BindableEvent") then
-        -- This is the local keybind event used by the public Legacy Evade GUI.
-        pcall(function() keybindUsed:Fire("Crouch", true) end)
-        return true
-    end
-    return false
+local function animator()
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    return hum and hum:FindFirstChildOfClass("Animator")
 end
 
-local function getAnimator()
-    local character = player.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return nil end
-    return humanoid:FindFirstChildOfClass("Animator")
-end
-
-local function animationNumber(track)
+local function idOf(t)
     local id = ""
-    pcall(function()
-        if track.Animation then id = track.Animation.AnimationId end
-    end)
+    pcall(function() id = t.Animation.AnimationId end)
     return tostring(id):match("%d+")
 end
 
-local function getCrouchTrack()
-    local animator = getAnimator()
-    if not animator then return nil end
-    local ok, tracks = pcall(function() return animator:GetPlayingAnimationTracks() end)
+local function findTrack()
+    local a = animator()
+    if not a then return nil end
+    local ok, list = pcall(function() return a:GetPlayingAnimationTracks() end)
     if not ok then return nil end
-    for _, track in ipairs(tracks) do
-        if animationNumber(track) == CROUCH_ANIMATION_ID then return track end
+    for _, t in ipairs(list) do
+        if idOf(t) == CROUCH_ID then return t end
     end
-    return nil
 end
 
-local function stopCrouchTracks()
-    local animator = getAnimator()
-    if animator then
-        local ok, tracks = pcall(function() return animator:GetPlayingAnimationTracks() end)
+local function stopTracks()
+    local a = animator()
+    if a then
+        local ok, list = pcall(function() return a:GetPlayingAnimationTracks() end)
         if ok then
-            for _, track in ipairs(tracks) do
-                if animationNumber(track) == CROUCH_ANIMATION_ID then
-                    pcall(function() track:Stop(0.1) end)
-                end
+            for _, t in ipairs(list) do
+                if idOf(t) == CROUCH_ID then pcall(function() t:Stop(0.1) end) end
             end
         end
     end
-    if forcedTrack then pcall(function() forcedTrack:Stop(0.1) end) end
+    if track then pcall(function() track:Stop(0.1) end) end
+    track, animatorRef = nil, nil
 end
 
-local function playCrouch()
-    local animator = getAnimator()
-    if not animator then return end
-    if forcedTrack and forcedAnimator == animator then
-        if not forcedTrack.IsPlaying then
-            pcall(function() forcedTrack:Play(0.08, 1, 1) end)
-        end
+local function play()
+    local a = animator()
+    if not a then return end
+    if track and animatorRef == a then
+        if not track.IsPlaying then pcall(function() track:Play(0.08, 1, 1) end) end
         return
     end
-    pcall(function() if forcedTrack then forcedTrack:Stop(0) end end)
-    if not crouchAnimation then
-        crouchAnimation = Instance.new("Animation")
-        crouchAnimation.Name = "X9InfiniteCrouch"
-        crouchAnimation.AnimationId = "rbxassetid://" .. CROUCH_ANIMATION_ID
-    end
-    local ok, track = pcall(function() return animator:LoadAnimation(crouchAnimation) end)
-    if not ok or not track then return end
-    forcedTrack = track
-    forcedAnimator = animator
-    forcedTrack.Looped = true
-    pcall(function() forcedTrack.Priority = Enum.AnimationPriority.Action end)
-    pcall(function() forcedTrack:Play(0.08, 1, 1) end)
+    if track then pcall(function() track:Stop(0) end) end
+    local ok, t = pcall(function() return a:LoadAnimation(animation) end)
+    if not ok or not t then return end
+    track, animatorRef = t, a
+    t.Looped = true
+    pcall(function() t.Priority = Enum.AnimationPriority.Action end)
+    pcall(function() t:Play(0.08, 1, 1) end)
 end
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "X9InfiniteCrouchGui"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-gui.DisplayOrder = 100
-gui.Parent = playerGui
-
-local button = Instance.new("TextButton")
-button.Name = "CrouchToggle"
-button.Size = UDim2.new(0, 112, 0, 44)
-button.Position = UDim2.new(1, -132, 0.62, 0)
-button.BackgroundColor3 = Color3.fromRGB(35, 105, 65)
-button.TextColor3 = Color3.new(1, 1, 1)
-button.Text = "CROUCH: OFF"
-button.TextSize = 13
-button.Font = Enum.Font.GothamBold
-button.BorderSizePixel = 0
-button.Active = true
-button.Parent = gui
-Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
-
-local function refreshButton()
-    if crouchEnabled then
-        button.Text = "CROUCH: ON"
-        button.BackgroundColor3 = Color3.fromRGB(25, 145, 75)
-    else
-        button.Text = "CROUCH: OFF"
-        button.BackgroundColor3 = Color3.fromRGB(35, 105, 65)
-    end
-end
-
-button.Activated:Connect(function()
-    crouchEnabled = not crouchEnabled
-    if crouchEnabled then
-        fireGameCrouch()
-        playCrouch()
-    else
-        fireGameCrouch()
-        stopCrouchTracks()
-    end
-    refreshButton()
-end)
-
--- Make the button draggable on touch or mouse.
-local dragging, dragInput, dragStart, startPos
-button.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = button.Position
-        dragInput = input
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
-    end
-end)
-button.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
-        dragInput = input
-    end
-end)
-UIS.InputChanged:Connect(function(input)
-    if dragging and (input == dragInput or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - dragStart
-        button.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + delta.X,
-            startPos.Y.Scale, startPos.Y.Offset + delta.Y
-        )
-    end
-end)
-
-player.CharacterAdded:Connect(function(character)
-    if forcedTrack then pcall(function() forcedTrack:Stop(0) end) end
-    forcedTrack = nil
-    forcedAnimator = nil
-    lastCharacter = character
-    task.delay(0.8, function()
-        if crouchEnabled and player.Character == character then
-            fireGameCrouch()
-            playCrouch()
+local function connect(obj)
+    if not obj:IsA("GuiButton") or obj.Name ~= "Crouch" or obj:GetAttribute("X9CrouchHooked") then return end
+    obj:SetAttribute("X9CrouchHooked", true)
+    obj.Activated:Connect(function()
+        enabled = not enabled
+        if enabled then
+            play()
+        else
+            stopTracks()
         end
     end)
+end
+
+for _, obj in ipairs(playerGui:GetDescendants()) do connect(obj) end
+playerGui.DescendantAdded:Connect(function(obj)
+    task.defer(function() if obj.Parent then connect(obj) end end)
+end)
+
+player.CharacterAdded:Connect(function()
+    if track then pcall(function() track:Stop(0) end) end
+    track, animatorRef = nil, nil
+    task.delay(0.7, function() if enabled then play() end end)
 end)
 
 task.spawn(function()
-    while gui.Parent do
-        if crouchEnabled and not getCrouchTrack() then
-            playCrouch()
-        end
-        task.wait(0.06)
+    while player.Parent do
+        if enabled and not findTrack() then play() end
+        task.wait(0.12)
     end
 end)
-
-refreshButton()
