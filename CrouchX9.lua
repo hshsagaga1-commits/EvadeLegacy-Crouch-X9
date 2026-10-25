@@ -151,7 +151,7 @@ local EMOTE_ANIMATION_IDS = {
     ["8734717021"] = true,
 }
 local crouchEnabled = nil
-local crouchAnimation, forcedCrouchTrack
+local crouchAnimation, forcedCrouchTrack, forcedCrouchAnimator
 local crouchButtonConnected = {}
 
 local function getAnimator()
@@ -199,7 +199,7 @@ end
 local function prepareCrouchTrack()
     local animator = getAnimator()
     if not animator then return nil end
-    if forcedCrouchTrack and forcedCrouchTrack.Parent == animator then
+    if forcedCrouchTrack and forcedCrouchAnimator == animator then
         return forcedCrouchTrack
     end
     pcall(function() if forcedCrouchTrack then forcedCrouchTrack:Stop(0) end end)
@@ -214,6 +214,7 @@ local function prepareCrouchTrack()
         return nil
     end
     forcedCrouchTrack = track
+    forcedCrouchAnimator = animator
     forcedCrouchTrack.Looped = true
     pcall(function() forcedCrouchTrack.Priority = Enum.AnimationPriority.Action end)
     return forcedCrouchTrack
@@ -318,6 +319,16 @@ pg.DescendantAdded:Connect(function(obj)
     task.defer(function()
         if obj.Parent then pcall(watch, obj) end
     end)
+end)
+
+-- Keep the lock intent through death/respawn; a new character gets a fresh animation track.
+player.CharacterAdded:Connect(function()
+    pcall(function()
+        if forcedCrouchTrack then forcedCrouchTrack:Stop(0) end
+    end)
+    forcedCrouchTrack = nil
+    forcedCrouchAnimator = nil
+    log("CHARACTER_ADDED crouchLock=" .. tostring(crouchEnabled))
 end)
 
 local lastAnimations = ""
